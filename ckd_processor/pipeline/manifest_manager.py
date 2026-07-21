@@ -1,5 +1,6 @@
 """
 Manifest Manager for state tracking, incremental execution, and pipeline metrics.
+Provides root summary and individual document provenance tracking.
 """
 
 import json
@@ -31,6 +32,7 @@ class ManifestManager:
     def __init__(self, manifest_path: str = "./knowledge/manifest.json"):
         self.manifest_path = manifest_path
         self.entries: Dict[str, DocumentManifestEntry] = {}
+        self.last_model_used: str = "qwen3.6:35b"
         self.load()
 
     def load(self) -> None:
@@ -38,8 +40,10 @@ class ManifestManager:
             try:
                 with open(self.manifest_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    for k, v in data.items():
-                        self.entries[k] = DocumentManifestEntry(**v)
+                    entries_data = data.get("entries", data) if isinstance(data, dict) and "entries" in data else data
+                    for k, v in entries_data.items():
+                        if isinstance(v, dict) and "sha256" in v:
+                            self.entries[k] = DocumentManifestEntry(**v)
                 logger.info(f"Loaded manifest with {len(self.entries)} processed entries.")
             except Exception as e:
                 logger.warning(f"Error loading manifest from {self.manifest_path}: {e}")
@@ -47,9 +51,26 @@ class ManifestManager:
     def save(self) -> None:
         os.makedirs(os.path.dirname(os.path.abspath(self.manifest_path)), exist_ok=True)
         try:
-            dict_data = {k: v.model_dump() for k, v in self.entries.items()}
+            total = len(self.entries)
+            success = sum(1 for e in self.entries.values() if e.status == "success")
+            failed = sum(1 for e in self.entries.values() if e.status == "failed")
+            
+            root_manifest = {
+                "schema_version": "1.0",
+                "ckd_version": "1.0",
+                "generated_at": datetime.now().isoformat(),
+                "model": self.last_model_used,
+                "summary": {
+                    "total_documents": total,
+                    "success": success,
+                    "failed": failed,
+                    "total_chunks": sum(e.chunk_count for e in self.entries.values() if e.status == "success")
+                },
+                "entries": {k: v.model_dump() for k, v in self.entries.items()}
+            }
+
             with open(self.manifest_path, "w", encoding="utf-8") as f:
-                json.dump(dict_data, f, indent=2, ensure_ascii=False)
+                json.dump(root_manifest, f, indent=2, ensure_ascii=False)
         except Exception as e:
             logger.error(f"Error saving manifest to {self.manifest_path}: {e}")
 
@@ -72,6 +93,7 @@ class ManifestManager:
         model: str,
         chunk_count: int
     ) -> None:
+        self.last_model_used = model
         entry = DocumentManifestEntry(
             document_id=document_id,
             source_file=source_file,
@@ -95,6 +117,7 @@ class ManifestManager:
         error_msg: str,
         model: str
     ) -> None:
+        self.last_model_used = model
         entry = DocumentManifestEntry(
             document_id=document_id,
             source_file=source_file,

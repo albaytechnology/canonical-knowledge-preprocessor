@@ -61,22 +61,37 @@ class MockLLMClient(BaseLLMClient):
         metadata = {
             "title": title,
             "document_type": doc_type,
-            "department": "Engineering / Operations",
+            "department": {
+                "value": "Engineering / Operations",
+                "confidence": 0.95
+            },
+            "importance": {
+                "value": "High",
+                "confidence": 0.90
+            },
+            "confidentiality": {
+                "value": "Internal",
+                "confidence": 0.99
+            },
             "language": lang,
             "summary": clean_prompt[:300] + "...",
             "keywords": ["enterprise", "knowledge", "rag", "canonical"],
-            "people": [],
-            "organizations": [],
-            "locations": [],
+            "entities": {
+                "companies": [],
+                "people": [],
+                "products": [],
+                "machines": [],
+                "locations": [],
+                "emails": re.findall(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", clean_prompt),
+                "phones": [],
+                "invoice_numbers": re.findall(r"\bINV-[-A-Za-z0-9]+\b", clean_prompt),
+                "purchase_orders": re.findall(r"\bORD-[-A-Za-z0-9]+\b", clean_prompt),
+                "part_numbers": list(set(codes)),
+                "standards": [],
+                "urls": re.findall(r"\b(?:https?://|www\.)\S+\b", clean_prompt)
+            },
             "dates": list(set(dates)),
             "references": [],
-            "entities": [],
-            "document_codes": list(set(codes)),
-            "products": [],
-            "machines": [],
-            "standards": [],
-            "confidentiality": "Internal",
-            "importance": "High",
             "contains_tables": "|" in clean_prompt,
             "contains_images": False,
             "contains_handwriting": False

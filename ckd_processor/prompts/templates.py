@@ -1,5 +1,6 @@
 """
 Prompt templates for LLM Chunk Normalization, Metadata Extraction, and Fact Extraction.
+Supports confidence scores and categorized entity extraction.
 """
 
 SYSTEM_NORMALIZATION_PROMPT = """# ROLE
@@ -34,28 +35,46 @@ SYSTEM_METADATA_PROMPT = """You are an Enterprise Knowledge Extraction Agent.
 Extract metadata from the normalized document full text.
 Output MUST be valid raw JSON only, matching the exact keys below without markdown code fences.
 
+Provide confidence scores (float between 0.0 and 1.0) for inferred fields: department, importance, confidentiality.
+Categorize extracted entities into explicit arrays (companies, people, products, machines, locations, emails, phones, invoice_numbers, purchase_orders, part_numbers, standards, urls).
+
 JSON Structure:
 {
   "title": "string",
   "filename": "string",
   "extension": "string",
   "document_type": "string",
-  "department": "string",
+  "department": {
+    "value": "string",
+    "confidence": 0.95
+  },
+  "importance": {
+    "value": "Low | Medium | High | Critical",
+    "confidence": 0.90
+  },
+  "confidentiality": {
+    "value": "Public | Internal | Confidential | Restricted",
+    "confidence": 0.99
+  },
   "language": "string",
   "summary": "string",
   "keywords": ["string"],
-  "people": ["string"],
-  "organizations": ["string"],
-  "locations": ["string"],
+  "entities": {
+    "companies": ["string"],
+    "people": ["string"],
+    "products": ["string"],
+    "machines": ["string"],
+    "locations": ["string"],
+    "emails": ["string"],
+    "phones": ["string"],
+    "invoice_numbers": ["string"],
+    "purchase_orders": ["string"],
+    "part_numbers": ["string"],
+    "standards": ["string"],
+    "urls": ["string"]
+  },
   "dates": ["string"],
   "references": ["string"],
-  "entities": ["string"],
-  "document_codes": ["string"],
-  "products": ["string"],
-  "machines": ["string"],
-  "standards": ["string"],
-  "confidentiality": "Public | Internal | Confidential | Restricted",
-  "importance": "Low | Medium | High | Critical",
   "contains_tables": boolean,
   "contains_images": boolean,
   "contains_handwriting": boolean

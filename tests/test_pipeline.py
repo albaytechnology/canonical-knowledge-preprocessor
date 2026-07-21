@@ -5,6 +5,7 @@ End-to-End Pipeline integration test using unittest.
 import os
 import shutil
 import tempfile
+import json
 import unittest
 
 from ckd_processor.config import PipelineConfig
@@ -50,10 +51,12 @@ Due Date: 2024-02-28
 
             target_md = os.path.join(output_dir, "files", "invoice.md")
             target_json = os.path.join(output_dir, "files", "invoice.knowledge.json")
+            target_chunk_manifest = os.path.join(output_dir, "files", "invoice.chunk_manifest.json")
             manifest_path = os.path.join(output_dir, "manifest.json")
 
             self.assertTrue(os.path.exists(target_md))
             self.assertTrue(os.path.exists(target_json))
+            self.assertTrue(os.path.exists(target_chunk_manifest))
             self.assertTrue(os.path.exists(manifest_path))
 
             with open(target_md, "r", encoding="utf-8") as f:
@@ -62,6 +65,13 @@ Due Date: 2024-02-28
                 self.assertIn("# Full Text", md_content)
                 self.assertIn("# Extracted Facts", md_content)
                 self.assertIn("INV-2024-001", md_content)
+                self.assertIn("ckd_version", md_content)
+
+            with open(target_chunk_manifest, "r", encoding="utf-8") as f:
+                c_manifest = json.load(f)
+                self.assertIsInstance(c_manifest, list)
+                self.assertGreaterEqual(len(c_manifest), 1)
+                self.assertIn("sha256", c_manifest[0])
 
         finally:
             shutil.rmtree(temp_dir)
