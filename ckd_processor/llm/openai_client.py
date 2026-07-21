@@ -27,7 +27,7 @@ class OpenAILLMClient(BaseLLMClient):
         self.timeout = timeout
         self.max_retries = max_retries
 
-    def generate(self, prompt: str, system_prompt: str = "") -> str:
+    def generate(self, prompt: str, system_prompt: str = "", images: Optional[List[str]] = None) -> str:
         url = f"{self.api_base}/chat/completions"
         headers = {
             "Content-Type": "application/json"

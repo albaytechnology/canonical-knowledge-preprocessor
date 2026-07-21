@@ -46,3 +46,6 @@ parser:
     - xml
     - json
     - log
+    - png
+    - jpg
+    - jpeg

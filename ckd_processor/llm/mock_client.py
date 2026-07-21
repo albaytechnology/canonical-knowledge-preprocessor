@@ -8,10 +8,12 @@ from ckd_processor.llm.base import BaseLLMClient
 from ckd_processor.utils.unicode_utils import rule_based_clean
 
 
+from typing import Optional, List
+
 class MockLLMClient(BaseLLMClient):
     """Fallback LLM engine simulating normalization, metadata extraction, and fact extraction."""
 
-    def generate(self, prompt: str, system_prompt: str = "") -> str:
+    def generate(self, prompt: str, system_prompt: str = "", images: Optional[List[str]] = None) -> str:
         # Detect mode cleanly based on system prompt identifier
         sp_lower = system_prompt.lower()
         if "knowledge extraction agent" in sp_lower or "json structure:" in sp_lower:

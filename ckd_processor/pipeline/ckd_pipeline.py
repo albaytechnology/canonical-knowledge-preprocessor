@@ -110,9 +110,12 @@ class CKDPipeline:
             logger.info(f"Generated {len(chunks)} adaptive chunk(s) for {filename}")
 
             # Step 4: LLM Chunk Normalization
+            b64_img = parsed_doc.raw_metadata.get("base64_image")
+            img_payload = [b64_img] if b64_img else None
+
             normalized_chunks = []
             for chunk in chunks:
-                norm_text = self._normalize_chunk(chunk, document_id)
+                norm_text = self._normalize_chunk(chunk, document_id, images=img_payload)
                 normalized_chunks.append(norm_text)
 
             reassembled_full_text = "\n\n".join(normalized_chunks)
@@ -188,7 +191,7 @@ class CKDPipeline:
             self._isolate_failed_file(filepath, str(e))
             return False
 
-    def _normalize_chunk(self, chunk, document_id: str) -> str:
+    def _normalize_chunk(self, chunk, document_id: str, images: Optional[List[str]] = None) -> str:
         prompt = NORMALIZATION_USER_PROMPT.format(
             document_id=document_id,
             chunk_index=chunk.metadata.chunk_index,
@@ -196,7 +199,7 @@ class CKDPipeline:
             page_end=chunk.metadata.page_end,
             chunk_content=chunk.content
         )
-        return self.llm_client.generate(prompt, SYSTEM_NORMALIZATION_PROMPT)
+        return self.llm_client.generate(prompt, SYSTEM_NORMALIZATION_PROMPT, images=images)
 
     def _extract_metadata(self, filepath: str, filename: str, ext: str, full_text: str, page_count: int) -> Dict[str, Any]:
         word_count = len(full_text.split())

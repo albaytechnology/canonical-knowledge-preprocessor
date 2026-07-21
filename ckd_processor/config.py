@@ -35,7 +35,8 @@ class ParserConfig(BaseModel):
     supported_extensions: List[str] = Field(
         default_factory=lambda: [
             "pdf", "docx", "doc", "xlsx", "xls", "csv", "txt", "md",
-            "html", "htm", "eml", "msg", "pptx", "ppt", "xml", "json", "log"
+            "html", "htm", "eml", "msg", "pptx", "ppt", "xml", "json", "log",
+            "png", "jpg", "jpeg"
         ]
     )
 
