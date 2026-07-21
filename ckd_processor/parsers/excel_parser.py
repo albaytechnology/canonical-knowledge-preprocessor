@@ -1,5 +1,6 @@
 """
-Spreadsheet Parser (.xlsx, .xls, .csv) converting sheets into structured Markdown tables.
+Spreadsheet Parser (.xlsx, .xls, .csv) converting sheets into clean, structured Markdown tables.
+Handles multi-sheet workbooks, cell newline sanitization, and NaN cleanup.
 """
 
 import os
@@ -24,15 +25,15 @@ class ExcelParser(BaseParser):
         try:
             if ext == "csv":
                 df = pd.read_csv(filepath)
-                md_table = df.to_markdown(index=False)
+                md_table = self._clean_and_convert_df(df)
                 pages.append(PageContent(page_number=1, text=f"### Sheet: Data\n\n{md_table}"))
             else:
-                # Excel multi-sheet handling
+                # Excel multi-sheet handling (.xlsx, .xls)
                 excel_file = pd.ExcelFile(filepath)
                 for idx, sheet_name in enumerate(excel_file.sheet_names, start=1):
                     df = pd.read_excel(excel_file, sheet_name=sheet_name)
                     if not df.empty:
-                        md_table = df.to_markdown(index=False)
+                        md_table = self._clean_and_convert_df(df)
                         pages.append(
                             PageContent(
                                 page_number=idx,
@@ -52,3 +53,22 @@ class ExcelParser(BaseParser):
             full_raw_text=full_text,
             raw_metadata={"sheet_count": len(pages)}
         )
+
+    def _clean_and_convert_df(self, df: pd.DataFrame) -> str:
+        """Sanitize dataframe cells and convert to pristine Markdown table."""
+        # Replace NaN with empty string
+        df = df.fillna("")
+
+        # Sanitize internal newlines in cell values to maintain valid Markdown table rows
+        df = df.map(lambda val: str(val).replace("\r\n", " ").replace("\n", " ").strip() if not isinstance(val, (int, float)) else val)
+
+        try:
+            return df.to_markdown(index=False)
+        except Exception:
+            # Fallback manual tabbed/markdown conversion if tabulate fails
+            headers = [str(c) for c in df.columns]
+            rows = ["| " + " | ".join(headers) + " |", "| " + " | ".join(["---"] * len(headers)) + " |"]
+            for _, row in df.iterrows():
+                row_cells = [str(val) for val in row.values]
+                rows.append("| " + " | ".join(row_cells) + " |")
+            return "\n".join(rows)

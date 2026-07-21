@@ -10,12 +10,12 @@ import yaml
 
 class LLMConfig(BaseModel):
     provider: str = Field(default="ollama", description="LLM provider: ollama, openai, or mock")
-    model_name: str = Field(default="qwen2.5:32b", description="LLM model identifier")
-    api_base: str = Field(default="http://localhost:11434", description="Base URL for LLM API")
+    model_name: str = Field(default="qwen3.6:35b", description="LLM model identifier")
+    api_base: str = Field(default="http://172.16.10.142:11434", description="Base URL for LLM API")
     api_key: Optional[str] = Field(default=None, description="API Key if required")
     temperature: float = Field(default=0.0, description="Temperature for deterministic outputs")
     max_tokens: int = Field(default=4096, description="Max response tokens")
-    timeout: int = Field(default=120, description="Timeout in seconds for LLM call")
+    timeout: int = Field(default=180, description="Timeout in seconds for LLM call")
     max_retries: int = Field(default=3, description="Max retries for failed LLM calls")
 
 
@@ -29,7 +29,7 @@ class ChunkingConfig(BaseModel):
 
 
 class ParserConfig(BaseModel):
-    enable_ocr: bool = Field(default=True, description="Auto-detect scanned PDFs and apply OCR")
+    enable_ocr: bool = Field(default=False, description="Local pytesseract OCR disabled; Qwen model handles OCR directly")
     ocr_language: str = Field(default="eng+tur", description="OCR language pack")
     max_file_size_mb: int = Field(default=100, description="Max file size limit in MB")
     supported_extensions: List[str] = Field(
