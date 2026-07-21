@@ -1,0 +1,43 @@
+cache_enabled: true
+chunking:
+  overlap_tokens: 300
+  respect_code_blocks: true
+  respect_headings: true
+  respect_tables: true
+  target_tokens: 3000
+  tokenizer_type: word
+input_dir: ./input_docs
+llm:
+  api_base: http://localhost:11434
+  api_key: null
+  max_retries: 3
+  max_tokens: 4096
+  model_name: qwen2.5:32b
+  provider: ollama
+  temperature: 0.0
+  timeout: 120
+output_dir: ./knowledge
+parallel_workers: 4
+parser:
+  enable_ocr: true
+  max_file_size_mb: 100
+  ocr_language: eng+tur
+  supported_extensions:
+  - pdf
+  - docx
+  - doc
+  - xlsx
+  - xls
+  - csv
+  - txt
+  - md
+  - html
+  - htm
+  - eml
+  - msg
+  - pptx
+  - ppt
+  - xml
+  - json
+  - log
+resume_from_manifest: true
