@@ -1,7 +1,9 @@
 """
-PDF Document Parser supporting native text extraction and smart OCR fallback.
+PDF Document Parser supporting native text extraction, page-to-image base64 rendering for Vision LLMs, and smart OCR fallback.
 """
 
+import base64
+import io
 import os
 from typing import List
 import pdfplumber
@@ -31,25 +33,40 @@ class PDFParser(BaseParser):
     def parse(self, filepath: str) -> ParsedDocument:
         pages: List[PageContent] = []
         filename = os.path.basename(filepath)
+        base64_images: List[str] = []
         
         try:
             with pdfplumber.open(filepath) as pdf:
                 for idx, page in enumerate(pdf.pages, start=1):
                     text = page.extract_text() or ""
-                    has_images = len(page.images) > 0
+                    has_images = len(getattr(page, "images", [])) > 0 or len(text.strip()) < 30
                     is_ocr = False
 
-                    # Smart OCR Trigger: Page has < 30 chars of text but contains images
-                    if self.enable_ocr and len(text.strip()) < 30 and has_images:
-                        logger.info(f"PDF Page {idx} in {filename} appears to be scanned image. Applying OCR...")
+                    # Scanned page detection: text is missing or extremely short (< 30 chars)
+                    if len(text.strip()) < 30:
+                        logger.info(f"PDF Page {idx} in {filename} appears to be scanned image/short text. Rendering image & performing OCR...")
                         try:
                             pil_img = page.to_image(resolution=200).original
-                            ocr_text = pytesseract.image_to_string(pil_img, lang=self.ocr_lang)
-                            if len(ocr_text.strip()) > len(text.strip()):
-                                text = ocr_text
-                                is_ocr = True
+                            
+                            # Convert page to PNG base64 for Vision LLMs (Qwen 3.6:35b)
+                            buf = io.BytesIO()
+                            pil_img.save(buf, format="PNG")
+                            b64_str = base64.b64encode(buf.getvalue()).decode("utf-8")
+                            base64_images.append(b64_str)
+
+                            # Apply Tesseract OCR if enabled
+                            if self.enable_ocr:
+                                ocr_text = pytesseract.image_to_string(pil_img, lang=self.ocr_lang)
+                                if len(ocr_text.strip()) > len(text.strip()):
+                                    text = ocr_text
+                                    is_ocr = True
+
                         except Exception as ocr_err:
-                            logger.warning(f"OCR failed for page {idx} in {filename}: {ocr_err}")
+                            logger.warning(f"Image rendering/OCR failed for page {idx} in {filename}: {ocr_err}")
+
+                    # If text is STILL empty after OCR or page render, insert image reference placeholder
+                    if not text.strip():
+                        text = f"![Scanned PDF Page {idx} ({filename})](file://{filepath})"
 
                     pages.append(
                         PageContent(
@@ -61,19 +78,27 @@ class PDFParser(BaseParser):
                     )
         except Exception as e:
             logger.warning(f"pdfplumber extraction encountered issue on {filename}: {e}. Fallback to PyPDF...")
-            # Fallback to PyPDF if pdfplumber fails
             reader = PdfReader(filepath)
             pages = []
             for idx, page in enumerate(reader.pages, start=1):
                 text = page.extract_text() or ""
+                if not text.strip():
+                    text = f"![Scanned PDF Page {idx} ({filename})](file://{filepath})"
                 pages.append(PageContent(page_number=idx, text=text))
 
         full_text = "\n\n".join([p.text for p in pages])
+        raw_meta = {
+            "total_pages": len(pages)
+        }
+        if base64_images:
+            raw_meta["base64_images"] = base64_images
+            raw_meta["base64_image"] = base64_images[0]  # First page image for primary vision payload
+
         return ParsedDocument(
             filepath=filepath,
             filename=filename,
             extension="pdf",
             pages=pages,
             full_raw_text=full_text,
-            raw_metadata={"total_pages": len(pages)}
+            raw_metadata=raw_meta
         )

@@ -118,7 +118,16 @@ class CKDPipeline:
 
             # Step 4: LLM Chunk Normalization
             b64_img = parsed_doc.raw_metadata.get("base64_image")
-            img_payload = [b64_img] if b64_img else None
+            b64_imgs = parsed_doc.raw_metadata.get("base64_images", [])
+            img_payload = []
+            if b64_img:
+                img_payload.append(b64_img)
+            if b64_imgs:
+                for img in b64_imgs:
+                    if img and img not in img_payload:
+                        img_payload.append(img)
+            if not img_payload:
+                img_payload = None
 
             normalized_chunks = []
             for chunk in chunks:
@@ -280,9 +289,6 @@ class CKDPipeline:
                 }
             }
 
-        # Deterministically enrich entities via regex
-        self._enrich_entities_with_regex(data, full_text)
-
         # Enforce canonical versioning & provenance metadata
         data["ckd_version"] = "1.0"
         data["schema_version"] = "1.0"
@@ -305,53 +311,6 @@ class CKDPipeline:
             "processor": "CKP-v1.0"
         }
         return data
-
-    def _enrich_entities_with_regex(self, data: Dict[str, Any], full_text: str) -> None:
-        """Deterministically extract TCKN, VKN, emails, phones, and URLs into entities dict."""
-        if "entities" not in data or not isinstance(data["entities"], dict):
-            data["entities"] = {}
-
-        entities = data["entities"]
-        standard_keys = [
-            "national_id_numbers", "tax_id_numbers", "document_numbers",
-            "companies", "people", "job_positions", "products", "machines",
-            "locations", "emails", "phones", "invoice_numbers",
-            "purchase_orders", "part_numbers", "standards", "urls"
-        ]
-        for k in standard_keys:
-            if k not in entities or not isinstance(entities[k], list):
-                entities[k] = []
-
-        # 1. National ID Numbers (TCKN: 11 digits)
-        tckn_matches = re.findall(r"\b[1-9]\d{10}\b", full_text)
-        for tckn in tckn_matches:
-            if tckn not in entities["national_id_numbers"]:
-                entities["national_id_numbers"].append(tckn)
-
-        # 2. Tax ID Numbers (VKN: 10 digits)
-        vkn_matches = re.findall(r"\b\d{10}\b", full_text)
-        for vkn in vkn_matches:
-            if vkn not in entities["national_id_numbers"] and vkn not in entities["tax_id_numbers"]:
-                entities["tax_id_numbers"].append(vkn)
-
-        # 3. Emails
-        email_matches = re.findall(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", full_text)
-        for email in email_matches:
-            if email not in entities["emails"]:
-                entities["emails"].append(email)
-
-        # 4. Phones
-        phone_matches = re.findall(r"\b(?:0\s*)?[5][0-9]{2}[\s-]?[0-9]{3}[\s-]?[0-9]{2}[\s-]?[0-9]{2}\b", full_text)
-        for phone in phone_matches:
-            norm_p = re.sub(r"\s+", "", phone)
-            if norm_p not in entities["phones"]:
-                entities["phones"].append(norm_p)
-
-        # 5. URLs
-        url_matches = re.findall(r"\b(?:https?://|www\.)\S+\b", full_text)
-        for url in url_matches:
-            if url not in entities["urls"]:
-                entities["urls"].append(url)
 
     def _extract_facts(self, full_text: str) -> str:
         prompt = FACTS_USER_PROMPT.format(document_content=full_text[:20000])

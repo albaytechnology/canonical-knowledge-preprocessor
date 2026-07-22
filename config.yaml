@@ -25,7 +25,7 @@ chunking:
   respect_code_blocks: true
 
 parser:
-  enable_ocr: false # Set to false since Qwen 3.6:35b handles OCR/vision directly
+  enable_ocr: true
   ocr_language: "eng+tur"
   max_file_size_mb: 100
   supported_extensions:
