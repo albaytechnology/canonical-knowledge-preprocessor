@@ -154,6 +154,33 @@ def remove_decorative_headers_footers(text: str) -> str:
     return "\n".join(filtered)
 
 
+def fix_spaced_identifiers(text: str) -> str:
+    """
+    Merge artificially spaced single digits into continuous numbers.
+    e.g. "1 2 3 4 5 6 7 8 9 1 2" -> "12345678912" (TCKN)
+         "1 2 3 4 5 6 7 8 9 0" -> "1234567890" (VKN)
+    """
+    if not text:
+        return ""
+    
+    # 11 spaced single digits (TCKN pattern)
+    pattern_11 = re.compile(r"\b(\d)\s+(\d)\s+(\d)\s+(\d)\s+(\d)\s+(\d)\s+(\d)\s+(\d)\s+(\d)\s+(\d)\s+(\d)\b")
+    text = pattern_11.sub(r"\1\2\3\4\5\6\7\8\9\10\11", text)
+    
+    # 10 spaced single digits (VKN pattern)
+    pattern_10 = re.compile(r"\b(\d)\s+(\d)\s+(\d)\s+(\d)\s+(\d)\s+(\d)\s+(\d)\s+(\d)\s+(\d)\s+(\d)\b")
+    text = pattern_10.sub(r"\1\2\3\4\5\6\7\8\9\10", text)
+
+    # 5 to 9 spaced single digits in sequence
+    pattern_seq = re.compile(r"\b(\d)(?:\s+(\d)){4,8}\b")
+    def merge_match(m):
+        raw = m.group(0)
+        return re.sub(r"\s+", "", raw)
+    text = pattern_seq.sub(merge_match, text)
+
+    return text
+
+
 def rule_based_clean(text: str) -> str:
     """
     Execute full deterministic rule-based cleaning pipeline.
@@ -164,6 +191,7 @@ def rule_based_clean(text: str) -> str:
     text = normalize_unicode(text)
     text = remove_control_characters(text)
     text = remove_decorative_headers_footers(text)
+    text = fix_spaced_identifiers(text)
     text = merge_broken_ocr_lines(text)
     text = normalize_whitespace_and_lines(text)
 

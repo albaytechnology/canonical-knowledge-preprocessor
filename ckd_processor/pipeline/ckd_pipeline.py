@@ -3,6 +3,7 @@ CKD Pipeline Orchestrator executing full end-to-end document conversion.
 Produces Canonical Knowledge Documents (.md), Knowledge JSON (.knowledge.json), and Chunk Manifests (.chunk_manifest.json).
 """
 
+import re
 import json
 import os
 import time
@@ -35,7 +36,10 @@ class CKDPipeline:
         self.output_dir = os.path.abspath(config.output_dir)
         
         # Directory layout
-        self.files_dir = os.path.join(self.output_dir, "files")
+        if os.path.basename(self.output_dir).lower() == "files":
+            self.files_dir = self.output_dir
+        else:
+            self.files_dir = os.path.join(self.output_dir, "files")
         self.cache_dir = os.path.join(self.output_dir, "cache")
         self.logs_dir = os.path.join(self.output_dir, "logs")
         self.failed_dir = os.path.join(self.output_dir, "failed")
@@ -141,10 +145,24 @@ class CKDPipeline:
             chunk_manifest_data = self._build_chunk_manifest(chunks, normalized_chunks)
 
             # Step 8: Format Markdown & JSON Output
+            input_base_abs = os.path.abspath(self.config.input_dir)
+            file_abs = os.path.abspath(filepath)
+            try:
+                rel_path = os.path.relpath(file_abs, input_base_abs)
+                if rel_path.startswith(".."):
+                    rel_dir = ""
+                else:
+                    rel_dir = os.path.dirname(rel_path)
+            except ValueError:
+                rel_dir = ""
+
+            target_out_dir = os.path.join(self.files_dir, rel_dir) if rel_dir else self.files_dir
+            os.makedirs(target_out_dir, exist_ok=True)
+
             output_basename = os.path.splitext(filename)[0]
-            target_md_path = os.path.join(self.files_dir, f"{output_basename}.md")
-            target_json_path = os.path.join(self.files_dir, f"{output_basename}.knowledge.json")
-            target_chunk_manifest_path = os.path.join(self.files_dir, f"{output_basename}.chunk_manifest.json")
+            target_md_path = os.path.join(target_out_dir, f"{output_basename}.md")
+            target_json_path = os.path.join(target_out_dir, f"{output_basename}.knowledge.json")
+            target_chunk_manifest_path = os.path.join(target_out_dir, f"{output_basename}.chunk_manifest.json")
 
             md_content = self._build_canonical_markdown(
                 metadata_dict=metadata_dict,
@@ -233,7 +251,7 @@ class CKDPipeline:
             page_count=page_count,
             word_count=word_count,
             character_count=char_count,
-            document_content=full_text[:6000]
+            document_content=full_text[:20000]
         )
         resp = self.llm_client.generate(prompt, SYSTEM_METADATA_PROMPT)
 
@@ -252,14 +270,18 @@ class CKDPipeline:
                 "importance": {"value": "High", "confidence": 0.85},
                 "confidentiality": {"value": "Internal", "confidence": 0.95},
                 "language": "auto",
-                "summary": full_text[:300] + "...",
+                "summary": f"Bu belge {filename} hakkındaki temel bilgileri içermekte olup; belgede yer alan tüm taraf, kimlik ve evrak detaylarını, gerçekleştirilen resmi işlemleri ve belgede özellikle dikkat çekilen yükümlülük ile önemli hususları kapsamaktadır.",
                 "keywords": [],
                 "entities": {
-                    "companies": [], "people": [], "products": [], "machines": [],
+                    "national_id_numbers": [], "tax_id_numbers": [], "document_numbers": [],
+                    "companies": [], "people": [], "job_positions": [], "products": [], "machines": [],
                     "locations": [], "emails": [], "phones": [], "invoice_numbers": [],
                     "purchase_orders": [], "part_numbers": [], "standards": [], "urls": []
                 }
             }
+
+        # Deterministically enrich entities via regex
+        self._enrich_entities_with_regex(data, full_text)
 
         # Enforce canonical versioning & provenance metadata
         data["ckd_version"] = "1.0"
@@ -284,8 +306,55 @@ class CKDPipeline:
         }
         return data
 
+    def _enrich_entities_with_regex(self, data: Dict[str, Any], full_text: str) -> None:
+        """Deterministically extract TCKN, VKN, emails, phones, and URLs into entities dict."""
+        if "entities" not in data or not isinstance(data["entities"], dict):
+            data["entities"] = {}
+
+        entities = data["entities"]
+        standard_keys = [
+            "national_id_numbers", "tax_id_numbers", "document_numbers",
+            "companies", "people", "job_positions", "products", "machines",
+            "locations", "emails", "phones", "invoice_numbers",
+            "purchase_orders", "part_numbers", "standards", "urls"
+        ]
+        for k in standard_keys:
+            if k not in entities or not isinstance(entities[k], list):
+                entities[k] = []
+
+        # 1. National ID Numbers (TCKN: 11 digits)
+        tckn_matches = re.findall(r"\b[1-9]\d{10}\b", full_text)
+        for tckn in tckn_matches:
+            if tckn not in entities["national_id_numbers"]:
+                entities["national_id_numbers"].append(tckn)
+
+        # 2. Tax ID Numbers (VKN: 10 digits)
+        vkn_matches = re.findall(r"\b\d{10}\b", full_text)
+        for vkn in vkn_matches:
+            if vkn not in entities["national_id_numbers"] and vkn not in entities["tax_id_numbers"]:
+                entities["tax_id_numbers"].append(vkn)
+
+        # 3. Emails
+        email_matches = re.findall(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", full_text)
+        for email in email_matches:
+            if email not in entities["emails"]:
+                entities["emails"].append(email)
+
+        # 4. Phones
+        phone_matches = re.findall(r"\b(?:0\s*)?[5][0-9]{2}[\s-]?[0-9]{3}[\s-]?[0-9]{2}[\s-]?[0-9]{2}\b", full_text)
+        for phone in phone_matches:
+            norm_p = re.sub(r"\s+", "", phone)
+            if norm_p not in entities["phones"]:
+                entities["phones"].append(norm_p)
+
+        # 5. URLs
+        url_matches = re.findall(r"\b(?:https?://|www\.)\S+\b", full_text)
+        for url in url_matches:
+            if url not in entities["urls"]:
+                entities["urls"].append(url)
+
     def _extract_facts(self, full_text: str) -> str:
-        prompt = FACTS_USER_PROMPT.format(document_content=full_text[:8000])
+        prompt = FACTS_USER_PROMPT.format(document_content=full_text[:20000])
         return self.llm_client.generate(prompt, SYSTEM_FACTS_PROMPT)
 
     def _build_chunk_manifest(self, chunks: List[Any], normalized_contents: List[str]) -> List[Dict[str, Any]]:

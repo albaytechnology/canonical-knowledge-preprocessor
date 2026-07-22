@@ -1,7 +1,7 @@
 # Canonical Knowledge Document (CKD) Configuration File
 
-input_dir: "./input_docs"
-output_dir: "./knowledge"
+input_dir: "./IK-YEDEK"
+output_dir: "./Files"
 parallel_workers: 4
 resume_from_manifest: true
 cache_enabled: true
