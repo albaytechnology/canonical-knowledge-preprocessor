@@ -18,6 +18,7 @@ from ckd_processor.chunking import AdaptiveChunker, get_tokenizer
 from ckd_processor.llm import get_llm_client, BaseLLMClient
 from ckd_processor.prompts.templates import (
     SYSTEM_NORMALIZATION_PROMPT, NORMALIZATION_USER_PROMPT,
+    SYSTEM_REFINEMENT_PROMPT, REFINEMENT_USER_PROMPT,
     SYSTEM_METADATA_PROMPT, METADATA_USER_PROMPT,
     SYSTEM_FACTS_PROMPT, FACTS_USER_PROMPT
 )
@@ -136,19 +137,23 @@ class CKDPipeline:
 
             reassembled_full_text = "\n\n".join(normalized_chunks)
 
-            # Step 5: Metadata Extraction Pass
+            # Layer 2: LLM Verification, Audit & Refinement Pass
+            logger.info(f"Executing Layer 2 LLM Verification & Refinement Pass for {filename}...")
+            refined_full_text = self._refine_full_text(reassembled_full_text)
+
+            # Layer 3: Structure-Aware Metadata Extraction Pass
             metadata_dict = self._extract_metadata(
                 filepath=filepath,
                 filename=filename,
                 ext=ext,
-                full_text=reassembled_full_text,
+                full_text=refined_full_text,
                 page_count=len(parsed_doc.pages),
                 file_size=file_size,
                 sha256=sha256
             )
 
-            # Step 6: Fact Extraction Pass
-            extracted_facts_text = self._extract_facts(reassembled_full_text)
+            # Layer 3: Fact Extraction Pass
+            extracted_facts_text = self._extract_facts(refined_full_text)
 
             # Step 7: Build Chunk Manifest Data
             chunk_manifest_data = self._build_chunk_manifest(chunks, normalized_chunks)
@@ -175,7 +180,7 @@ class CKDPipeline:
 
             md_content = self._build_canonical_markdown(
                 metadata_dict=metadata_dict,
-                full_text=reassembled_full_text,
+                full_text=refined_full_text,
                 facts_text=extracted_facts_text
             )
 
@@ -240,6 +245,14 @@ class CKDPipeline:
             chunk_content=chunk.content
         )
         return self.llm_client.generate(prompt, SYSTEM_NORMALIZATION_PROMPT, images=images)
+
+    def _refine_full_text(self, full_text: str) -> str:
+        """Layer 2: Full document verification, audit & refinement pass via LLM."""
+        if not full_text or not full_text.strip():
+            return ""
+        prompt = REFINEMENT_USER_PROMPT.format(full_document_content=full_text[:25000])
+        resp = self.llm_client.generate(prompt, SYSTEM_REFINEMENT_PROMPT)
+        return resp.strip() if resp and resp.strip() else full_text
 
     def _extract_metadata(
         self,

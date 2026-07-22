@@ -1,5 +1,6 @@
 """
-PDF Document Parser supporting native text extraction, page-to-image base64 rendering for Vision LLMs, and smart OCR fallback.
+PDF Document Parser converting pages directly into base64 payloads for Vision LLM (Qwen 3.6:35b) native OCR & multimodal transcription.
+No external OCR dependencies (tesseract/pytesseract) used.
 """
 
 import base64
@@ -14,17 +15,10 @@ from ckd_processor.utils.logger import setup_logger
 
 logger = setup_logger("PDFParser")
 
-try:
-    import pytesseract
-    from PIL import Image
-    HAS_OCR = True
-except ImportError:
-    HAS_OCR = False
-
 
 class PDFParser(BaseParser):
-    def __init__(self, enable_ocr: bool = True, ocr_lang: str = "eng+tur"):
-        self.enable_ocr = enable_ocr and HAS_OCR
+    def __init__(self, enable_ocr: bool = False, ocr_lang: str = "eng+tur"):
+        self.enable_ocr = enable_ocr
         self.ocr_lang = ocr_lang
 
     def supported_extensions(self) -> List[str]:
@@ -40,31 +34,20 @@ class PDFParser(BaseParser):
                 for idx, page in enumerate(pdf.pages, start=1):
                     text = page.extract_text() or ""
                     has_images = len(getattr(page, "images", [])) > 0 or len(text.strip()) < 30
-                    is_ocr = False
 
-                    # Scanned page detection: text is missing or extremely short (< 30 chars)
-                    if len(text.strip()) < 30:
-                        logger.info(f"PDF Page {idx} in {filename} appears to be scanned image/short text. Rendering image & performing OCR...")
+                    # Render page image for Qwen Vision LLM if page contains image or text is short/missing
+                    if len(text.strip()) < 30 or len(getattr(page, "images", [])) > 0:
+                        logger.info(f"Rendering PDF Page {idx} in {filename} to image base64 for native Qwen Vision LLM OCR...")
                         try:
                             pil_img = page.to_image(resolution=200).original
-                            
-                            # Convert page to PNG base64 for Vision LLMs (Qwen 3.6:35b)
                             buf = io.BytesIO()
                             pil_img.save(buf, format="PNG")
                             b64_str = base64.b64encode(buf.getvalue()).decode("utf-8")
                             base64_images.append(b64_str)
+                        except Exception as render_err:
+                            logger.warning(f"Image rendering failed for page {idx} in {filename}: {render_err}")
 
-                            # Apply Tesseract OCR if enabled
-                            if self.enable_ocr:
-                                ocr_text = pytesseract.image_to_string(pil_img, lang=self.ocr_lang)
-                                if len(ocr_text.strip()) > len(text.strip()):
-                                    text = ocr_text
-                                    is_ocr = True
-
-                        except Exception as ocr_err:
-                            logger.warning(f"Image rendering/OCR failed for page {idx} in {filename}: {ocr_err}")
-
-                    # If text is STILL empty after OCR or page render, insert image reference placeholder
+                    # If text is empty, insert placeholder so chunker passes image payload to Qwen Vision
                     if not text.strip():
                         text = f"![Scanned PDF Page {idx} ({filename})](file://{filepath})"
 
@@ -73,7 +56,7 @@ class PDFParser(BaseParser):
                             page_number=idx,
                             text=text,
                             has_images=has_images,
-                            is_ocr=is_ocr
+                            is_ocr=False
                         )
                     )
         except Exception as e:
@@ -92,7 +75,7 @@ class PDFParser(BaseParser):
         }
         if base64_images:
             raw_meta["base64_images"] = base64_images
-            raw_meta["base64_image"] = base64_images[0]  # First page image for primary vision payload
+            raw_meta["base64_image"] = base64_images[0]
 
         return ParsedDocument(
             filepath=filepath,
