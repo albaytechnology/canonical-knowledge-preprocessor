@@ -39,9 +39,10 @@ class OllamaLLMClient(BaseLLMClient):
         if images:
             payload["images"] = images
 
+        req_timeout = None if (self.timeout is None or self.timeout <= 0) else self.timeout
         for attempt in range(1, self.max_retries + 1):
             try:
-                resp = requests.post(url, json=payload, timeout=self.timeout)
+                resp = requests.post(url, json=payload, timeout=req_timeout)
                 resp.raise_for_status()
                 data = resp.json()
                 return data.get("response", "")

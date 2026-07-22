@@ -2,7 +2,7 @@
 
 input_dir: "./IK-YEDEK"
 output_dir: "./Files"
-parallel_workers: 4
+parallel_workers: 1
 resume_from_manifest: true
 cache_enabled: true
 
@@ -13,7 +13,7 @@ llm:
   api_key: null
   temperature: 0.0
   max_tokens: 4096
-  timeout: 180
+  timeout: 0
   max_retries: 3
 
 chunking:
